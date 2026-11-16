@@ -42,8 +42,11 @@ import (
 )
 
 type playerData struct {
-	animationVariant  int32
-	markVariant       int32
+	animationVariant int32
+	markVariant      int32
+	// hotbarTextAt is when a popup, tip, jukebox popup or action bar was last sent (not counting
+	// SendQuietPopup), so a standing line can make way for it.
+	hotbarTextAt      time.Time
 	intProperties     []int32
 	allowFlight       bool
 	xuid              string
@@ -289,18 +292,33 @@ func (p *Player) Messaget(t chat.Translation, a ...any) {
 // overwrites/is overwritten by the name of the item equipped.
 // The popup is formatted following the rules of fmt.Sprintln without a newline at the end.
 func (p *Player) SendPopup(a ...any) {
+	p.hotbarTextAt = time.Now()
 	p.session().SendPopup(format(a))
+}
+
+// SendQuietPopup sends a popup like SendPopup without counting as a new notice in HotbarTextAt:
+// for a line kept on screen that should give way to other notices.
+func (p *Player) SendQuietPopup(a ...any) {
+	p.session().SendPopup(format(a))
+}
+
+// HotbarTextAt returns when the last popup, tip, jukebox popup or action bar was sent to the player
+// (SendQuietPopup aside).
+func (p *Player) HotbarTextAt() time.Time {
+	return p.hotbarTextAt
 }
 
 // SendTip sends a tip to the player. The tip is shown in the middle of the screen of the player.
 // The tip is formatted following the rules of fmt.Sprintln without a newline at the end.
 func (p *Player) SendTip(a ...any) {
+	p.hotbarTextAt = time.Now()
 	p.session().SendTip(format(a))
 }
 
 // SendJukeboxPopup sends a formatted jukebox popup to the player. This popup is shown above the hotbar of the player.
 // The popup is close to the position of an action bar message and the text has no background.
 func (p *Player) SendJukeboxPopup(a ...any) {
+	p.hotbarTextAt = time.Now()
 	p.session().SendJukeboxPopup(format(a))
 }
 
@@ -333,6 +351,7 @@ func (p *Player) SendTitle(t title.Title) {
 		}
 	}
 	if t.ActionText() != "" {
+		p.hotbarTextAt = time.Now()
 		p.session().SendActionBarMessage(t.ActionText())
 	}
 }
