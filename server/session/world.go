@@ -107,17 +107,18 @@ func (s *Session) ViewEntity(e world.Entity) {
 		}
 
 		s.writePacket(&packet.AddPlayer{
-			EntityMetadata:  metadata,
-			EntityRuntimeID: runtimeID,
-			GameType:        gameTypeFromMode(v.GameMode()),
-			HeadYaw:         float32(yaw),
-			Pitch:           float32(pitch),
-			Position:        vec64To32(e.Position()),
-			UUID:            v.UUID(),
-			Username:        v.Name(),
-			Yaw:             float32(yaw),
-			BuildPlatform:   int32(protocol.DeviceUnknown),
-			EntityLinks:     s.spawnLinks(e),
+			EntityMetadata:   metadata,
+			EntityRuntimeID:  runtimeID,
+			GameType:         gameTypeFromMode(v.GameMode()),
+			HeadYaw:          float32(yaw),
+			Pitch:            float32(pitch),
+			Position:         vec64To32(e.Position()),
+			UUID:             v.UUID(),
+			Username:         v.Name(),
+			Yaw:              float32(yaw),
+			BuildPlatform:    int32(protocol.DeviceUnknown),
+			EntityLinks:      s.spawnLinks(e),
+			EntityProperties: entityProperties(e),
 			AbilityData: protocol.AbilityData{
 				EntityUniqueID: int64(runtimeID),
 				Layers: []protocol.AbilityLayer{{
@@ -167,17 +168,18 @@ func (s *Session) ViewEntity(e world.Entity) {
 	}
 
 	s.writePacket(&packet.AddActor{
-		EntityUniqueID:  int64(runtimeID),
-		EntityRuntimeID: runtimeID,
-		EntityType:      id,
-		EntityMetadata:  metadata,
-		Position:        vec64To32(e.Position()),
-		Velocity:        vec64To32(vel),
-		Pitch:           float32(pitch),
-		Yaw:             float32(yaw),
-		HeadYaw:         float32(yaw),
-		BodyYaw:         float32(yaw),
-		Attributes:      attributes,
+		EntityUniqueID:   int64(runtimeID),
+		EntityRuntimeID:  runtimeID,
+		EntityType:       id,
+		EntityMetadata:   metadata,
+		Position:         vec64To32(e.Position()),
+		Velocity:         vec64To32(vel),
+		Pitch:            float32(pitch),
+		Yaw:              float32(yaw),
+		HeadYaw:          float32(yaw),
+		BodyYaw:          float32(yaw),
+		Attributes:       attributes,
+		EntityProperties: entityProperties(e),
 	})
 }
 
@@ -1150,8 +1152,9 @@ func (s *Session) ViewEntityAction(e world.Entity, a world.EntityAction) {
 // ViewEntityState ...
 func (s *Session) ViewEntityState(e world.Entity) {
 	s.writePacket(&packet.SetActorData{
-		EntityRuntimeID: s.entityRuntimeID(e),
-		EntityMetadata:  s.entityMetadata(e),
+		EntityRuntimeID:  s.entityRuntimeID(e),
+		EntityMetadata:   s.entityMetadata(e),
+		EntityProperties: entityProperties(e),
 	})
 }
 
