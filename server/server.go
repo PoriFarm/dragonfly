@@ -518,6 +518,8 @@ func (srv *Server) defaultGameData() minecraft.GameData {
 		// Entity runtime/unique ID for the player itself is always 1 in df.
 		EntityUniqueID:  1,
 		EntityRuntimeID: 1,
+		// Integer properties of minecraft:player (session.PlayerIntProperties).
+		PropertyData: session.PlayerPropertyData(),
 
 		WorldName:       srv.conf.Name,
 		BaseGameVersion: protocol.CurrentVersion,
