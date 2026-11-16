@@ -44,6 +44,7 @@ import (
 type playerData struct {
 	animationVariant  int32
 	markVariant       int32
+	intProperties     []int32
 	allowFlight       bool
 	xuid              string
 	locale            language.Tag
@@ -207,6 +208,19 @@ func (p *Player) MarkVariant() int32 {
 // SetMarkVariant changes the mark variant shown to viewers of the Player.
 func (p *Player) SetMarkVariant(v int32) {
 	p.markVariant = v
+	p.updateState()
+}
+
+// IntPropertyValues returns the Player's integer entity property values, in the order of
+// session.PlayerIntProperties, which resource packs read with query.property.
+func (p *Player) IntPropertyValues() []int32 {
+	return p.intProperties
+}
+
+// SetIntPropertyValues changes the Player's integer entity property values and shows them to its
+// viewers, the Player included.
+func (p *Player) SetIntPropertyValues(v []int32) {
+	p.intProperties = append([]int32(nil), v...)
 	p.updateState()
 }
 
