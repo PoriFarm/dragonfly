@@ -84,10 +84,14 @@ type Session struct {
 	openedWindow                   atomic.Pointer[inventory.Inventory]
 	openedPos                      atomic.Pointer[cube.Pos]
 	virtualContainer               *virtualContainer
-	swingingArm                    atomic.Bool
-	changingSlot                   atomic.Bool
-	changingDimension              atomic.Bool
-	moving                         bool
+	// closingWindow is the window ID + 1 of a container the server closed and the client has not
+	// yet reported closed (0: none). The client takes about half a second to close it, and a
+	// container opened meanwhile is closed again by the client (ContainerClose 255).
+	closingWindow     atomic.Uint32
+	swingingArm       atomic.Bool
+	changingSlot      atomic.Bool
+	changingDimension atomic.Bool
+	moving            bool
 
 	lastChunkPos world.ChunkPos
 
