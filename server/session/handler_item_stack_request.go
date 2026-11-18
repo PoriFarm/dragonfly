@@ -541,6 +541,13 @@ func (h *ItemStackRequestHandler) reject(id int32, s *Session, tx *world.Tx) {
 
 	h.changes = map[byte]map[byte]changeInfo{}
 	h.pendingResults = nil
+
+	// The client does not always put back a container slot it took from after an error response
+	// and then ignores later updates of that slot (2026-11-19: a pressed menu button stayed blank
+	// and its redraw never showed). One InventoryContent of the open window resyncs it.
+	if s.containerOpened.Load() {
+		s.sendInv(s.openedWindow.Load(), s.openedWindowID.Load())
+	}
 }
 
 // call uses an event.Context, slot and item.Stack to call the event handler function passed. An error is returned if
