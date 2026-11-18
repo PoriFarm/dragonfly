@@ -1450,6 +1450,7 @@ func (s *Session) closeWindow(clientRequested bool) bool {
 	s.openedContainerID.Store(0)
 	s.openedWindow.Store(inventory.New(1, nil))
 	if !clientRequested {
+		s.closingWindow.Store(uint32(windowID) + 1)
 		s.writePacket(&packet.ContainerClose{
 			WindowID:      windowID,
 			ContainerType: containerType,
