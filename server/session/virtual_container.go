@@ -21,8 +21,11 @@ type virtualContainer struct {
 	ready bool
 	// acked is set once the client answered the latency request; requested is when the menu was
 	// asked for, which bounds the wait for the client to close the previous container.
-	acked               bool
-	requested           time.Time
+	acked     bool
+	requested time.Time
+	// opened is when ContainerOpen was last sent and retries how often the client refused it.
+	opened              time.Time
+	retries             int
 	close, afterRequest func(*world.Tx)
 }
 
@@ -125,6 +128,33 @@ func (s *Session) closeVirtualContainer(tx *world.Tx, clientRequested bool) bool
 	return true
 }
 
+// maxRefusedOpens bounds how often a menu the client refused is sent again: 20, as the wiki's chest
+// UI table has it, since one latency round trip (about 0.1s) is shorter than the chat closing.
+// refusedOpenWindow is how soon after ContainerOpen a ContainerClose(255) counts as a refusal.
+const (
+	maxRefusedOpens   = 20
+	refusedOpenWindow = time.Second
+)
+
+// retryRefusedContainer handles a ContainerClose(255) that answers the menu just opened. The client
+// refuses a container that arrives while another screen, such as the chat a command was typed in,
+// is still closing (2026-11-19: the first /설정 after typing it never opened). As the wiki's chest UI
+// notes (server-ui/chest-ui 4) put it, a 255 within a second of the open is that case: the menu is
+// sent again after a NetworkStackLatency round trip, which the client answers once it has handled
+// the close. A later 255 closes the menu. It reports whether the refusal was handled.
+func (s *Session) retryRefusedContainer() bool {
+	menu := s.virtualContainer
+	if menu == nil || !menu.ready || menu.retries >= maxRefusedOpens || time.Since(menu.opened) > refusedOpenWindow {
+		return false
+	}
+	menu.retries++
+	menu.ready, menu.acked = false, false
+	menu.token = -time.Now().UnixNano()
+	s.writePacket(&packet.NetworkStackLatency{Timestamp: menu.token, NeedsResponse: true})
+	s.fallbackVirtualContainer(menu, virtualContainerFallback)
+	return true
+}
+
 type virtualContainerLatencyHandler struct{}
 
 func (*virtualContainerLatencyHandler) Handle(pk packet.Packet, s *Session, tx *world.Tx, _ Controllable) error {
@@ -154,7 +184,7 @@ func (s *Session) openVirtualContainerReady(tx *world.Tx, menu *virtualContainer
 		s.closeVirtualContainer(tx, false)
 		return
 	}
-	menu.ready = true
+	menu.ready, menu.opened = true, time.Now()
 	pos := menu.pos[0]
 	s.writePacket(&packet.ContainerOpen{WindowID: byte(s.openedWindowID.Load()), ContainerType: protocol.ContainerTypeContainer,
 		ContainerPosition: protocol.BlockPos{int32(pos.X()), int32(pos.Y()), int32(pos.Z())}, ContainerEntityUniqueID: -1})
