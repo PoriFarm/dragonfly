@@ -99,11 +99,19 @@ type virtualContainerLatencyHandler struct{}
 func (*virtualContainerLatencyHandler) Handle(pk packet.Packet, s *Session, tx *world.Tx, _ Controllable) error {
 	response := pk.(*packet.NetworkStackLatency)
 	menu := s.virtualContainer
-	if menu == nil || menu.ready || response.NeedsResponse || response.Timestamp != menu.token {
+	if menu == nil || menu.ready || !latencyAnswers(response.Timestamp, menu.token) {
 		return nil
 	}
 	s.openVirtualContainerReady(tx, menu)
 	return nil
+}
+
+// latencyAnswers reports whether a NetworkStackLatency reply answers the request carrying token. The
+// 1.26.6x client replies at once but with the timestamp multiplied by 1,000,000 (wrapping, as int64)
+// and NeedsResponse still set, so the exact match never held and every menu waited for the 500ms
+// fallback (measured 2026-11-18). The plain echo is kept for other clients and proxies.
+func latencyAnswers(timestamp, token int64) bool {
+	return timestamp == token || timestamp == token*1_000_000
 }
 
 func (s *Session) openVirtualContainerReady(tx *world.Tx, menu *virtualContainer) {
