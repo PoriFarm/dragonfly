@@ -29,8 +29,13 @@ func (h *ContainerCloseHandler) Handle(p packet.Packet, s *Session, tx *world.Tx
 	case 0xff:
 		// Sent when an inventory/container is opened at the same time as chat.
 		s.invOpened = false
+		if s.retryRefusedContainer() {
+			return nil
+		}
 		if s.containerOpened.Load() {
-			s.closeCurrentContainer(tx, false)
+			// The client never showed the container, so it will not report it closed: waiting for
+			// that report held the next menu for maxCloseWait (1.5s) every time.
+			s.closeCurrentContainer(tx, true)
 		}
 		return nil
 	default:
