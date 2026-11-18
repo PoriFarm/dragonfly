@@ -164,3 +164,54 @@ func TestRequestRollbackKeepsFirstSlotSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestVirtualChestWaitsForClientClose checks a menu opened right after the server closed another:
+// the latency answer alone does not open it while the client is still closing the old container
+// (it would close the new one with ContainerClose 255); the client's close report does, and with
+// no report the menu still opens within maxCloseWait.
+func TestVirtualChestWaitsForClientClose(t *testing.T) {
+	w := world.New()
+	defer w.Close()
+	s := &Session{br: world.DefaultBlockRegistry, packets: make(chan packet.Packet, 100), closeBackground: make(chan struct{})}
+	if err := w.Do(func(tx *world.Tx) {
+		if err := s.OpenVirtualContainer(tx, cube.Pos{0, 64, 0}, "first", inventory.New(27, nil), nil, nil); err != nil {
+			t.Fatal(err)
+		}
+		h := &virtualContainerLatencyHandler{}
+		_ = h.Handle(&packet.NetworkStackLatency{Timestamp: s.virtualContainer.token * 1_000_000, NeedsResponse: true}, s, tx, nil)
+		old := byte(s.openedWindowID.Load())
+		if err := s.OpenVirtualContainer(tx, cube.Pos{0, 64, 0}, "second", inventory.New(27, nil), nil, nil); err != nil {
+			t.Fatal(err)
+		}
+		if s.closingWindow.Load() != uint32(old)+1 {
+			t.Fatal("server close not remembered")
+		}
+		_ = h.Handle(&packet.NetworkStackLatency{Timestamp: s.virtualContainer.token * 1_000_000, NeedsResponse: true}, s, tx, nil)
+		if s.virtualContainer.ready {
+			t.Fatal("menu opened while the client was still closing the previous one")
+		}
+		if !s.closingWindow.CompareAndSwap(uint32(old)+1, 0) {
+			t.Fatal("close report not matched")
+		}
+		s.openWaitingVirtualContainer(tx)
+		if !s.virtualContainer.ready {
+			t.Fatal("client's close report did not open the waiting menu")
+		}
+		// No close report at all: the fallback still opens the next menu in time.
+		if err := s.OpenVirtualContainer(tx, cube.Pos{0, 64, 0}, "third", inventory.New(27, nil), nil, nil); err != nil {
+			t.Fatal(err)
+		}
+	}).Wait(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(maxCloseWait + time.Second)
+	for time.Now().Before(deadline) {
+		ready := false
+		_ = w.Do(func(*world.Tx) { ready = s.virtualContainer != nil && s.virtualContainer.ready }).Wait(context.Background())
+		if ready {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("menu stayed pending without a close report")
+}
