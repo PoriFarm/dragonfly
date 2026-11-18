@@ -15,11 +15,53 @@ import (
 // virtualContainer exists only on the session owner's world goroutine. Fake
 // chest blocks are sent to this client alone and never placed in the world.
 type virtualContainer struct {
-	pos                 []cube.Pos
-	world               *world.World
-	token               int64
-	ready               bool
+	pos   []cube.Pos
+	world *world.World
+	token int64
+	ready bool
+	// acked is set once the client answered the latency request; requested is when the menu was
+	// asked for, which bounds the wait for the client to close the previous container.
+	acked               bool
+	requested           time.Time
 	close, afterRequest func(*world.Tx)
+}
+
+// virtualContainerFallback opens a menu whose latency answer never came, and maxCloseWait bounds how
+// long a menu waits for the client to report the previous container closed.
+const (
+	virtualContainerFallback = 500 * time.Millisecond
+	maxCloseWait             = 1500 * time.Millisecond
+)
+
+// openWaitingVirtualContainer opens the pending menu once both the latency answer came and the
+// previous container is closed client-side.
+func (s *Session) openWaitingVirtualContainer(tx *world.Tx) {
+	if menu := s.virtualContainer; menu != nil && !menu.ready && menu.acked && s.closingWindow.Load() == 0 {
+		s.openVirtualContainerReady(tx, menu)
+	}
+}
+
+// fallbackVirtualContainer opens menu after the fallback delay, waiting longer (up to maxCloseWait
+// from the request) while the client is still closing the previous container.
+func (s *Session) fallbackVirtualContainer(menu *virtualContainer, after time.Duration) {
+	time.AfterFunc(after, func() {
+		menu.world.Do(func(tx *world.Tx) {
+			select {
+			case <-s.closeBackground:
+				return
+			default:
+			}
+			if s.virtualContainer != menu || menu.ready {
+				return
+			}
+			if s.closingWindow.Load() != 0 && time.Since(menu.requested) < maxCloseWait {
+				s.fallbackVirtualContainer(menu, 100*time.Millisecond)
+				return
+			}
+			s.closingWindow.Store(0)
+			s.openVirtualContainerReady(tx, menu)
+		})
+	})
 }
 
 func (s *Session) OpenVirtualContainer(tx *world.Tx, pos cube.Pos, title string, inv *inventory.Inventory, close, afterRequest func(*world.Tx)) error {
@@ -27,7 +69,7 @@ func (s *Session) OpenVirtualContainer(tx *world.Tx, pos cube.Pos, title string,
 		return fmt.Errorf("virtual chest requires 27 or 54 slots")
 	}
 	s.closeCurrentContainer(tx, false)
-	menu := &virtualContainer{pos: []cube.Pos{pos}, world: tx.World(), token: -time.Now().UnixNano(), close: close, afterRequest: afterRequest}
+	menu := &virtualContainer{pos: []cube.Pos{pos}, world: tx.World(), token: -time.Now().UnixNano(), requested: time.Now(), close: close, afterRequest: afterRequest}
 	if inv.Size() == 54 {
 		menu.pos = append(menu.pos, pos.Side(cube.FaceEast))
 	}
@@ -59,18 +101,7 @@ func (s *Session) OpenVirtualContainer(tx *world.Tx, pos cube.Pos, title string,
 	s.writePacket(&packet.NetworkStackLatency{Timestamp: menu.token, NeedsResponse: true})
 	// Some proxies consume latency responses. Keep the acknowledgement fast
 	// path, but do not leave a menu permanently pending behind such a proxy.
-	time.AfterFunc(500*time.Millisecond, func() {
-		menu.world.Do(func(tx *world.Tx) {
-			select {
-			case <-s.closeBackground:
-				return
-			default:
-			}
-			if s.virtualContainer == menu {
-				s.openVirtualContainerReady(tx, menu)
-			}
-		})
-	})
+	s.fallbackVirtualContainer(menu, virtualContainerFallback)
 	return nil
 }
 
@@ -102,7 +133,8 @@ func (*virtualContainerLatencyHandler) Handle(pk packet.Packet, s *Session, tx *
 	if menu == nil || menu.ready || !latencyAnswers(response.Timestamp, menu.token) {
 		return nil
 	}
-	s.openVirtualContainerReady(tx, menu)
+	menu.acked = true
+	s.openWaitingVirtualContainer(tx)
 	return nil
 }
 
