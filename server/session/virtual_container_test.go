@@ -91,6 +91,36 @@ func TestVirtualChestAcknowledgementAndClose(t *testing.T) {
 	}
 }
 
+// TestVirtualChestOpensOnClientScaledLatency checks the reply of the 1.26.6x client: the timestamp
+// multiplied by 1,000,000 with NeedsResponse still set opens the menu at once, not after the fallback.
+func TestVirtualChestOpensOnClientScaledLatency(t *testing.T) {
+	w := world.New()
+	defer w.Close()
+	err := w.Do(func(tx *world.Tx) {
+		s := &Session{br: world.DefaultBlockRegistry, packets: make(chan packet.Packet, 100), closeBackground: make(chan struct{})}
+		if err := s.OpenVirtualContainer(tx, cube.Pos{0, 64, 0}, "scaled", inventory.New(27, nil), nil, nil); err != nil {
+			t.Fatal(err)
+		}
+		h := &virtualContainerLatencyHandler{}
+		token := s.virtualContainer.token
+		_ = h.Handle(&packet.NetworkStackLatency{Timestamp: (token + 1) * 1_000_000, NeedsResponse: true}, s, tx, nil)
+		if s.virtualContainer.ready {
+			t.Fatal("stale scaled acknowledgement opened menu")
+		}
+		_ = h.Handle(&packet.NetworkStackLatency{Timestamp: token * 1_000_000, NeedsResponse: true}, s, tx, nil)
+		if !s.virtualContainer.ready {
+			t.Fatal("client's scaled acknowledgement did not open menu")
+		}
+	}).Wait(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The captured 1.26.62 reply to a real token.
+	if !latencyAnswers(-4116760413260901888, -1795001442340868600) {
+		t.Fatal("captured client reply not recognised")
+	}
+}
+
 func TestVirtualChestFallbackDoesNotReopenClosedMenu(t *testing.T) {
 	w := world.New()
 	defer w.Close()
