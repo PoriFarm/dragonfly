@@ -12,6 +12,10 @@ type ContainerCloseHandler struct{}
 func (h *ContainerCloseHandler) Handle(p packet.Packet, s *Session, tx *world.Tx, c Controllable) error {
 	pk := p.(*packet.ContainerClose)
 
+	if pk.WindowID != 0xff && s.closingWindow.CompareAndSwap(uint32(pk.WindowID)+1, 0) {
+		// The client finished closing the container the server closed: a menu waiting on it opens.
+		defer s.openWaitingVirtualContainer(tx)
+	}
 	c.MoveItemsToInventory()
 
 	var containerType byte
