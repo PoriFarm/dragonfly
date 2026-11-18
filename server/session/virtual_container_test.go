@@ -215,3 +215,80 @@ func TestVirtualChestWaitsForClientClose(t *testing.T) {
 	}
 	t.Fatal("menu stayed pending without a close report")
 }
+
+// A menu the client refuses with ContainerClose(255), as it does while the chat a command was typed
+// in is still closing, is sent again after a latency round trip instead of being lost, at most
+// maxRefusedOpens times.
+func TestVirtualChestRetriesRefusedOpen(t *testing.T) {
+	w := world.New()
+	defer w.Close()
+	s := &Session{br: world.DefaultBlockRegistry, packets: make(chan packet.Packet, 100), closeBackground: make(chan struct{})}
+	opens := func() int {
+		n := 0
+		for {
+			select {
+			case p := <-s.packets:
+				if _, ok := p.(*packet.ContainerOpen); ok {
+					n++
+				}
+			default:
+				return n
+			}
+		}
+	}
+	do := func(f func(tx *world.Tx)) {
+		if err := w.Do(f).Wait(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	do(func(tx *world.Tx) {
+		if err := s.OpenVirtualContainer(tx, cube.Pos{0, 64, 0}, "refused", inventory.New(54, nil), nil, nil); err != nil {
+			t.Fatal(err)
+		}
+		s.virtualContainer.acked = true
+		s.openWaitingVirtualContainer(tx)
+	})
+	if n := opens(); n != 1 {
+		t.Fatalf("first open sent %d ContainerOpen", n)
+	}
+	for i := 0; i < maxRefusedOpens; i++ {
+		do(func(tx *world.Tx) {
+			if !s.retryRefusedContainer() {
+				t.Fatalf("refusal %d not retried", i+1)
+			}
+			if s.virtualContainer.ready {
+				t.Fatal("refused menu sent again before the latency answer")
+			}
+			// The client answers the new latency request once it has handled the close.
+			h := &virtualContainerLatencyHandler{}
+			_ = h.Handle(&packet.NetworkStackLatency{Timestamp: s.virtualContainer.token * 1_000_000, NeedsResponse: true}, s, tx, nil)
+		})
+		if n := opens(); n != 1 {
+			t.Fatalf("retry %d sent %d ContainerOpen", i+1, n)
+		}
+	}
+	do(func(*world.Tx) {
+		if s.retryRefusedContainer() {
+			t.Fatal("refused menu retried past maxRefusedOpens")
+		}
+	})
+}
+
+// Closing a menu the client refused does not leave the next menu waiting for a close report the
+// client never sends.
+func TestRefusedMenuCloseDoesNotWait(t *testing.T) {
+	w := world.New()
+	defer w.Close()
+	s := &Session{br: world.DefaultBlockRegistry, packets: make(chan packet.Packet, 100), closeBackground: make(chan struct{})}
+	if err := w.Do(func(tx *world.Tx) {
+		if err := s.OpenVirtualContainer(tx, cube.Pos{0, 64, 0}, "refused", inventory.New(27, nil), nil, nil); err != nil {
+			t.Fatal(err)
+		}
+		s.closeCurrentContainer(tx, true)
+		if s.closingWindow.Load() != 0 {
+			t.Fatal("refused menu left a close wait")
+		}
+	}).Wait(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
