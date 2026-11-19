@@ -60,6 +60,9 @@ type playerData struct {
 	// that entity's position.
 	mount *world.EntityHandle
 	seat  mgl64.Vec3
+	// rideMove and rideJump are the steering the client sent last while riding (see RideInput).
+	rideMove mgl64.Vec2
+	rideJump bool
 
 	gameMode world.GameMode
 	skin     skin.Skin
