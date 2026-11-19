@@ -19,9 +19,9 @@ func (h *InteractHandler) Handle(p packet.Packet, s *Session, _ *world.Tx, c Con
 	case packet.InteractActionMouseOverEntity:
 		// We don't need this action.
 	case packet.InteractActionLeaveVehicle:
-		if r, ok := c.(interface{ Dismount() }); ok {
-			r.Dismount()
-		}
+		// The client also asks to get off when jump is pressed on a vehicle it does not steer
+		// itself, so whether to get off is decided with the next input packet.
+		s.leaveVehicle = true
 	case packet.InteractActionOpenInventory:
 		if s.invOpened {
 			// When there is latency, this might end up being sent multiple times. If we send a ContainerOpen
