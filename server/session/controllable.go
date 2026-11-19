@@ -40,6 +40,13 @@ type Controllable interface {
 	SetHeldSlot(slot int) error
 
 	Move(deltaPos mgl64.Vec3, deltaYaw, deltaPitch float64)
+	// SetRideInput records the steering keys held while riding an entity.
+	SetRideInput(move mgl64.Vec2, jump bool)
+	// Mounted returns the entity the controllable sits on, if any.
+	Mounted() (*world.EntityHandle, bool)
+	// RequestDismount handles the client asking to get off what it rides, jumping telling whether
+	// the jump key was down then.
+	RequestDismount(jumping bool)
 
 	Speed() float64
 	FlightSpeed() float64
