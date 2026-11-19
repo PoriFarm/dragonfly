@@ -42,6 +42,20 @@ func (h PlayerAuthInputHandler) handleMovement(pk *packet.PlayerAuthInput, s *Se
 		}
 	}
 
+	// A rider steers what it sits on with its movement keys (player.RideInput). While seated the
+	// client reports the seat the vehicle carries it to rather than the seat the server teleported
+	// it to on mounting, so a teleport still pending would hold back every movement.
+	c.SetRideInput(mgl64.Vec2{float64(pk.MoveVector[0]), float64(pk.MoveVector[1])}, pk.InputData.Load(packet.InputFlagJumpDown))
+	jumping := pk.InputData.Load(packet.InputFlagJumpDown) || pk.InputData.Load(packet.InputFlagStartJumping)
+	if s.leaveVehicle {
+		s.leaveVehicle = false
+		c.RequestDismount(jumping || s.jumpHeld)
+	}
+	s.jumpHeld = jumping
+	if _, riding := c.Mounted(); riding {
+		s.teleportPos.Store(nil)
+	}
+
 	pk.Position = pk.Position.Sub(mgl32.Vec3{0, 1.62}) // Sub the base offset of players from the pos.
 
 	newPos := vec32To64(pk.Position)
