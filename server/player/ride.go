@@ -60,3 +60,47 @@ func (p *Player) Mounted() (*world.EntityHandle, bool) {
 func (p *Player) SeatOffset() (mgl64.Vec3, bool) {
 	return p.seat, p.mount != nil
 }
+
+// SetRideInput records the movement keys the client holds while riding: move is its move vector
+// (x sideways, y forward, each -1 to 1) and jump whether jump is held. The network session sets it
+// with every input packet; it is zero while the player rides nothing.
+func (p *Player) SetRideInput(move mgl64.Vec2, jump bool) {
+	if p.mount == nil {
+		move, jump = mgl64.Vec2{}, false
+	}
+	p.rideMove, p.rideJump = move, jump
+}
+
+// RideInput returns the movement keys the player holds while riding, so the entity it rides can be
+// steered by it (a vehicle the server moves). Both are zero while the player rides nothing.
+func (p *Player) RideInput() (move mgl64.Vec2, jump bool) {
+	if p.mount == nil {
+		return mgl64.Vec2{}, false
+	}
+	return p.rideMove, p.rideJump
+}
+
+// RequestDismount handles the client asking to get off the entity the player rides. The client
+// also asks when jump is pressed on a vehicle it does not steer itself, while the vehicles the
+// server moves take jump as an input (RideInput), so a request made while jumping keeps the player
+// seated and shows the seat again to the client (which already left it on its side) and to every
+// viewer. Otherwise the player gets off; sneaking gets off as well (StartSneaking).
+func (p *Player) RequestDismount(jumping bool) {
+	if p.mount == nil {
+		return
+	}
+	if !jumping {
+		p.Dismount()
+		return
+	}
+	ridden, ok := p.mount.Entity(p.tx)
+	if !ok {
+		p.Dismount()
+		return
+	}
+	for _, v := range p.viewers() {
+		if lv, ok := v.(linkViewer); ok {
+			lv.ViewEntityLink(p, ridden, true)
+		}
+	}
+}
