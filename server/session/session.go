@@ -101,6 +101,10 @@ type Session struct {
 	blobs                 map[uint64][]byte
 	openChunkTransactions []map[uint64]struct{}
 	invOpened             bool
+	// leaveVehicle is set when the client asked to get off what it rides; the next input packet
+	// decides whether it was a jump (see PlayerAuthInputHandler). jumpHeld is whether the jump key
+	// was down in the last input packet.
+	leaveVehicle, jumpHeld bool
 
 	hudMu      sync.RWMutex
 	hudUpdates map[hud.Element]bool
