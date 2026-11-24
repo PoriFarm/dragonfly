@@ -69,6 +69,7 @@ type Session struct {
 
 	// heldSlot is the slot in the inventory that the controllable is holding.
 	heldSlot                     *uint32
+	shown                        atomic.Pointer[shownItem]
 	inv, offHand, enderChest, ui *inventory.Inventory
 	armour                       *inventory.Armour
 
