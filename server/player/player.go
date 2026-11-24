@@ -37,6 +37,7 @@ import (
 	"github.com/df-mc/dragonfly/server/world/sound"
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/google/uuid"
+	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 	"golang.org/x/text/language"
 )
@@ -72,6 +73,8 @@ type playerData struct {
 	inv, offHand, enderChest, ui *inventory.Inventory
 	armour                       *inventory.Armour
 	heldSlot                     *uint32
+	shownHand                    *protocol.ItemType // see ShowMainHandAs
+	shownSlot                    uint32
 
 	sneaking, sprinting, swimming, gliding, crawling, flying,
 	invisible, immobile, onGround, usingItem bool
