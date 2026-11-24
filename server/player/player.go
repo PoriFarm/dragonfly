@@ -1085,6 +1085,12 @@ func (p *Player) dropItems() {
 	}
 }
 
+// HasUIItems reports whether the player holds items in the cursor, the crafting grid or another slot outside of the
+// inventories returned by Data.
+func (p *Player) HasUIItems() bool {
+	return !p.ui.Empty()
+}
+
 // MoveItemsToInventory moves items kept in 'temporary' slots, such as the
 // crafting grid of slots in an enchantment table, to the player's inventory.
 // If no space is left for these items, the leftover items are dropped.
@@ -1096,7 +1102,7 @@ func (p *Player) MoveItemsToInventory() {
 		if n, err := p.inv.AddItem(i); err != nil {
 			// We couldn't add the item to the main inventory (probably because
 			// it was full), so we drop it instead.
-			p.Drop(i.Grow(-n))
+			p.dropLeftover(i.Grow(-n))
 		}
 	}
 }
@@ -2774,9 +2780,15 @@ func (p *Player) Drop(s item.Stack) int {
 	if p.Handler().HandleItemDrop(ctx, s); ctx.Cancelled() {
 		return 0
 	}
+	p.dropLeftover(s)
+	return s.Count()
+}
+
+// dropLeftover drops an item that no longer has a place in an inventory of the player. Unlike Drop, it cannot be
+// cancelled by the Handler: the stack has already been taken from where it was, so it would be lost.
+func (p *Player) dropLeftover(s item.Stack) {
 	opts := world.EntitySpawnOpts{Position: p.Position().Add(mgl64.Vec3{0, 1.4}), Velocity: p.Rotation().Vec3().Mul(0.4)}
 	p.tx.AddEntity(entity.NewItemPickupDelay(opts, s, time.Second*2))
-	return s.Count()
 }
 
 // OpenBlockContainer opens a block container, such as a chest, at the position passed. If no container was
@@ -3512,7 +3524,7 @@ func (p *Player) addNewItem(ctx *item.UseContext) {
 	n, err := p.Inventory().AddItem(ctx.NewItem)
 	if err != nil {
 		// Not all items could be added to the inventory, so drop the rest.
-		p.Drop(ctx.NewItem.Grow(-n))
+		p.dropLeftover(ctx.NewItem.Grow(-n))
 	}
 	if p.Dead() {
 		p.dropItems()
