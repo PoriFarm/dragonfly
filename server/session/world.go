@@ -331,9 +331,17 @@ func (s *Session) ViewEntityItems(e world.Entity) {
 	mainHand, offHand := c.HeldItems()
 
 	// Show the main hand item.
+	main := instanceFromItem(s.br, mainHand)
+	if sh, ok := e.(interface {
+		ShownMainHand() (protocol.ItemType, bool)
+	}); ok {
+		if t, ok := sh.ShownMainHand(); ok {
+			main.Stack = showAs(main.Stack, t)
+		}
+	}
 	s.writePacket(&packet.MobEquipment{
 		EntityRuntimeID: runtimeID,
-		NewItem:         instanceFromItem(s.br, mainHand),
+		NewItem:         main,
 	})
 	// Show the off-hand item.
 	s.writePacket(&packet.MobEquipment{
