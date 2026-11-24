@@ -271,8 +271,8 @@ func (s *Session) sendInv(inv *inventory.Inventory, windowID uint32) {
 		WindowID: windowID,
 		Content:  make([]protocol.ItemInstance, 0, inv.Size()),
 	}
-	for _, i := range inv.Slots() {
-		pk.Content = append(pk.Content, instanceFromItem(s.br, i))
+	for slot, i := range inv.Slots() {
+		pk.Content = append(pk.Content, s.slotInstance(i, slot, windowID))
 	}
 	s.writePacket(pk)
 }
@@ -282,7 +282,7 @@ func (s *Session) sendItem(item item.Stack, slot int, windowID uint32) {
 	s.writePacket(&packet.InventorySlot{
 		WindowID: windowID,
 		Slot:     uint32(slot),
-		NewItem:  instanceFromItem(s.br, item),
+		NewItem:  s.slotInstance(item, slot, windowID),
 	})
 }
 
@@ -819,6 +819,9 @@ func (s *Session) VerifySlot(slot int, expected item.Stack) error {
 
 	// The item the client claims to have must be identical to the one we have
 	// registered server-side.
+	if shown := s.shown.Load(); shown != nil && shown.slot == slot {
+		return nil // the client sees another item there
+	}
 	if !clientSideItem.Equal(actual) {
 		s.sendItem(actual, slot, protocol.WindowIDInventory)
 		// Only ever debug these as they are frequent and expected to happen
