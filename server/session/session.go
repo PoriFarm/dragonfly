@@ -425,6 +425,20 @@ func (s *Session) ClientData() login.ClientData {
 	return s.conn.ClientData()
 }
 
+// handlePacketSafely handles pk on the owner of the player. A panic in the handling of a packet is returned as an
+// error, so that it ends the session of this player rather than the process and with it every other session.
+func (s *Session) handlePacketSafely(pk packet.Packet) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.conf.Log.Error("process packet panicked", "packet", fmt.Sprintf("%T", pk), "panic", r)
+			err = fmt.Errorf("process packet %T: panic: %v", pk, r)
+		}
+	}()
+	return s.withControllable(context.Background(), func(tx *world.Tx, c Controllable) error {
+		return s.handlePacket(pk, tx, c)
+	})
+}
+
 // handlePackets continuously handles incoming packets from the connection. It processes them accordingly.
 // Once the connection is closed, handlePackets will return.
 func (s *Session) handlePackets() {
@@ -453,9 +467,7 @@ func (s *Session) handlePackets() {
 			s.conf.Log.Debug("session read ended", "error", err)
 			return
 		}
-		err = s.withControllable(context.Background(), func(tx *world.Tx, c Controllable) error {
-			return s.handlePacket(pk, tx, c)
-		})
+		err = s.handlePacketSafely(pk)
 		if err != nil {
 			if sessionOwnerStopped(err) {
 				return
